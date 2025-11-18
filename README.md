@@ -1,5 +1,5 @@
 # こんにちは！👋 masaru-starです
-プログラミングと新しい技術を学ぶことが大好きな**中学生**です。
+プログラミングと新しい技術を学ぶことが大好きな学生です。
 
 ---
 
@@ -24,8 +24,6 @@
 <p align="center">
   <img src="https://github-readme-stats.vercel.app/api?username=masaru-star&show_icons=true&theme=tokyonight&hide_border=false" alt="GitHub Stats" />
 </p>
-
----
 
 ## 🛠️ Top Languages
 
