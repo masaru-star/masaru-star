@@ -1,4 +1,4 @@
-# こんにちは！👋 masaru-sterです
+# こんにちは！👋 masaru-starです
 プログラミングと新しい技術を学ぶことが大好きな**中学生**です。
 
 ---
@@ -17,3 +17,21 @@
 | **バックエンド / ランタイム** | Node.js |
 | **汎用プログラミング言語** | Python, C#, C++, Java|
 | **興味がある** | Go, Swift, Lua |
+
+---
+
+## 🌟 GitHub Stats
+
+<p align="center">
+  <img src="https://github-readme-stats.vercel.app/api?username=masaru-star&show_icons=true&theme=tokyonight&hide_border=false" alt="GitHub Stats" />
+</p>
+
+---
+
+## 🛠️ Top Languages
+
+<p align="center">
+  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=masaru-star&layout=compact&theme=tokyonight&hide_border=false" alt="Top Languages" />
+</p>
+
+---
