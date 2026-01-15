@@ -19,16 +19,17 @@
 
 ---
 
-## 🌟 GitHub Stats
+## 🌟 Public Key
 
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=masaru-star&show_icons=true&theme=tokyonight&hide_border=false" alt="GitHub Stats" />
-</p>
+**学習用で保有しています。** メインネットの扱い、現金を使ったやりとりは行っておりません。
 
-## 🛠️ Top Languages
+Bitcoin Testnet3/Testnet4
+> tb1qm2rupshme0ef279ylx2at7grh6v3qyc4stpuaf
 
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=masaru-star&layout=compact&theme=tokyonight&hide_border=false" alt="Top Languages" />
-</p>
+Ethereum Sepolia/Hoodi
+> 0x7df12f5A6E7238edfdbBF9E73222D2A5C67a80Aa
+
+Solana Devnet/Testnet
+> DVigR5tzzcQ2AYUQ4LhpT1T41F8xeghgU4fherm5Xc7B
 
 ---
