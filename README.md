@@ -1,12 +1,12 @@
 # Hi there👋
-私はプログラミングと新しい技術を学ぶことが大好きな学生です。
+I'm a Japanese student who loves programming and learning new technologies.
 
 ---
 
-## 🚀 今取り組んでいること
+## 🚀 My current project
 
-* 現在、主に**Javascript**を使ったWebゲーム開発に取り組んでいます。
-* 目標：**C++技術の強化とUI/UX技術の強化**
+* Currently, I am mainly working on web game development using **Javascript**.
+* Goal: **Strengthening C++ skills and UI/UX skills**
 
 ## 🛠️ Skill stacks
 **Main stack:** Frontend Web Development  
