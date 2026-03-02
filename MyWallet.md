@@ -12,7 +12,7 @@ DVigR5tzzcQ2AYUQ4LhpT1T41F8xeghgU4fherm5Xc7B
 ```
 ### Dogecoin
 ```
-DBhnXHhynHb6y9HScZrEcTebhmHcJhTvYG
+D7SrtEerf3483hD6v9oAz6NUzXcu4dWbqA
 ```
 ### Tron
 ```
