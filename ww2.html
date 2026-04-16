@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WW2 リアル空戦シミュレーター</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        canvas { display: block; }
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+        }
+        .panel {
+            position: absolute; background: rgba(0, 0, 0, 0.6); color: #0f0; padding: 15px; border-radius: 8px; border: 1px solid #333; text-shadow: 0 0 5px #0f0;
+        }
+        #controls-help { top: 20px; left: 20px; }
+        #flight-data { bottom: 20px; left: 20px; font-size: 1.2rem; }
+        #damage-panel { bottom: 20px; right: 20px; width: 180px; }
+        .damage-bar { width: 100%; height: 10px; background: #333; margin-top: 2px; margin-bottom: 8px; border-radius: 5px; overflow: hidden; }
+        .damage-fill { height: 100%; background: #0f0; width: 100%; transition: background-color 0.3s; }
+        .damage-fill.warning { background: #ff0; }
+        .damage-fill.critical { background: #f00; }
+        
+        /* コクピット計器類 (一人称視点用) */
+        #cockpit-instruments {
+            position: absolute; bottom: 10%; left: 50%; transform: translateX(-50%);
+            display: none; width: 600px; height: 150px; justify-content: space-between; align-items: center;
+        }
+        .instrument {
+            width: 120px; height: 120px; background: radial-gradient(circle, #333 0%, #111 100%);
+            border-radius: 50%; border: 4px solid #555; position: relative; box-shadow: inset 0 0 15px #000, 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .instrument-label { position: absolute; bottom: 20px; width: 100%; text-align: center; color: #fff; font-size: 12px; }
+        .instrument-value { position: absolute; top: 30px; width: 100%; text-align: center; color: #fff; font-size: 16px; font-weight: bold; }
+        .needle { position: absolute; width: 4px; height: 50%; background: #f00; bottom: 50%; left: 50%; transform-origin: bottom center; transform: translateX(-50%) rotate(0deg); border-radius: 2px 2px 0 0; z-index: 2;}
+        .center-pin { position: absolute; width: 12px; height: 12px; background: #silver; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3;}
+        
+        /* 姿勢儀の特殊レイアウト */
+        #horizon-bg { position: absolute; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; }
+        #horizon-pitch { position: absolute; width: 100%; height: 400%; top: -150%; background: linear-gradient(to bottom, #0077be 50%, #8b4513 50%); transition: transform 0.1s; }
+        #horizon-plane { position: absolute; width: 80%; height: 4px; background: #ff0; top: 50%; left: 10%; transform: translateY(-50%); z-index: 2;}
+        #horizon-plane::after { content: ''; position: absolute; width: 10px; height: 10px; background: #ff0; top: -10px; left: 50%; transform: translateX(-50%); }
+
+        /* ターゲットマーカー */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 40px; height: 40px; border: 2px solid rgba(0, 255, 0, 0.5); border-radius: 50%; display: none;
+        }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(0, 255, 0, 0.5); }
+        #crosshair::before { width: 2px; height: 10px; top: 0; left: 19px; }
+        #crosshair::after { width: 10px; height: 2px; top: 19px; left: 0; }
+
+        /* ゲームオーバー画面 */
+        #game-over {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.2); padding: 40px; border: 2px solid red; border-radius: 10px;
+            color: white; text-align: center; display: none; backdrop-filter: blur(5px);
+        }
+        #game-over h1 { margin: 0 0 20px 0; font-size: 3rem; color: #ff5555; text-shadow: 0 0 10px red; }
+    </style>
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="ui-layer">
+        <div class="panel" id="controls-help">
+            <h3>操作方法</h3>
+            <p><b>W / S</b> : ピッチダウン / アップ</p>
+            <p><b>A / D</b> : ロール 左 / 右</p>
+            <p><b>Q / E</b> : ヨー 左 / 右 (ラダー)</p>
+            <p><b>Shift / Ctrl</b> : スロットル 増 / 減</p>
+            <p><b>Space</b> : 機銃発射</p>
+            <p><b>V</b> : 視点切替 (3人称/1人称)</p>
+        </div>
+
+        <div class="panel" id="flight-data">
+            <div>速度: <span id="ui-speed">0</span> km/h</div>
+            <div>高度: <span id="ui-alt">0</span> m</div>
+            <div>推力: <span id="ui-throttle">0</span> %</div>
+            <div>方位: <span id="ui-heading">0</span>°</div>
+        </div>
+
+        <div class="panel" id="damage-panel">
+            <h3 style="margin-top: 0;">機体ステータス</h3>
+            <div style="font-size: 0.9em;">エンジン</div>
+            <div class="damage-bar"><div class="damage-fill" id="dmg-engine"></div></div>
+            <div style="font-size: 0.9em;">胴体</div>
+            <div class="damage-bar"><div class="damage-fill" id="dmg-fuselage"></div></div>
+            <div style="font-size: 0.9em;">左翼</div>
+            <div class="damage-bar"><div class="damage-fill" id="dmg-leftWing"></div></div>
+            <div style="font-size: 0.9em;">右翼</div>
+            <div class="damage-bar"><div class="damage-fill" id="dmg-rightWing"></div></div>
+            <div style="font-size: 0.9em;">尾翼</div>
+            <div class="damage-bar"><div class="damage-fill" id="dmg-tail"></div></div>
+        </div>
+
+        <div id="crosshair"></div>
+
+        <div id="cockpit-instruments">
+            <div class="instrument" id="inst-speed">
+                <div class="instrument-value" id="inst-speed-val">0</div>
+                <div class="needle" id="needle-speed"></div>
+                <div class="center-pin"></div>
+                <div class="instrument-label">AIRSPEED<br>(km/h)</div>
+            </div>
+            <div class="instrument" id="inst-horizon">
+                <div id="horizon-bg">
+                    <div id="horizon-pitch"></div>
+                </div>
+                <div id="horizon-plane"></div>
+                <div class="instrument-label" style="text-shadow: 0 0 2px #000;">ATTITUDE</div>
+            </div>
+            <div class="instrument" id="inst-alt">
+                <div class="instrument-value" id="inst-alt-val">0</div>
+                <div class="needle" id="needle-alt"></div>
+                <div class="center-pin"></div>
+                <div class="instrument-label">ALTITUDE<br>(m)</div>
+            </div>
+            <div class="instrument" id="inst-compass">
+                <div class="needle" id="needle-compass" style="background: linear-gradient(to top, #fff 50%, #f00 50%); height: 80%; bottom: 10%;"></div>
+                <div class="center-pin"></div>
+                <div class="instrument-label">COMPASS</div>
+            </div>
+        </div>
+
+        <div id="game-over">
+            <h1>機体大破</h1>
+            <p>墜落しました。再読み込みしてリトライしてください。</p>
+        </div>
+    </div>
+
+<script>
+window.onload = function () {
+    // --- グローバル設定 & State ---
+    const CONFIG = {
+        gravity: 9.8,
+        airDensity: 1.225,
+        worldSize: 10000
+    };
+    
+    let isGameOver = false;
+    let cameraMode = 'third'; // 'third' or 'first'
+    
+    // キー入力状態
+    const keys = { w: false, a: false, s: false, d: false, q: false, e: false, shift: false, ctrl: false, space: false };
+    document.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+        if(keys.hasOwnProperty(key)) keys[key] = true;
+        if(e.key === 'Shift') keys.shift = true;
+        if(e.key === 'Control') keys.ctrl = true;
+        if(e.key === ' ') keys.space = true;
+        if(key === 'v') toggleCamera();
+    });
+    document.addEventListener('keyup', (e) => {
+        const key = e.key.toLowerCase();
+        if(keys.hasOwnProperty(key)) keys[key] = false;
+        if(e.key === 'Shift') keys.shift = false;
+        if(e.key === 'Control') keys.ctrl = false;
+        if(e.key === ' ') keys.space = false;
+    });
+
+    // --- Three.js セットアップ ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.FogExp2(0x87CEEB, 0.0002);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 20000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // ライティング
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(1000, 2000, 1000);
+    dirLight.castShadow = true;
+    dirLight.shadow.camera.top = 200;
+    dirLight.shadow.camera.bottom = -200;
+    dirLight.shadow.camera.left = -200;
+    dirLight.shadow.camera.right = 200;
+    scene.add(dirLight);
+
+    // 地面（テクスチャ生成）
+    const createGroundTexture = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#4a7c36';
+        ctx.fillRect(0, 0, 512, 512);
+        ctx.strokeStyle = '#3e6a2d';
+        ctx.lineWidth = 2;
+        for(let i=0; i<512; i+=32) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 512); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(512, i); ctx.stroke();
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(200, 200);
+        return tex;
+    };
+    const groundGeo = new THREE.PlaneGeometry(CONFIG.worldSize, CONFIG.worldSize);
+    const groundMat = new THREE.MeshLambertMaterial({ map: createGroundTexture() });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // パーティクル管理 (煙, 弾道)
+    const particles = [];
+    class Particle {
+        constructor(pos, vel, color, life, size) {
+            const geo = new THREE.BoxGeometry(size, size, size);
+            const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.8 });
+            this.mesh = new THREE.Mesh(geo, mat);
+            this.mesh.position.copy(pos);
+            this.velocity = vel;
+            this.life = life;
+            this.maxLife = life;
+            scene.add(this.mesh);
+        }
+        update(dt) {
+            this.mesh.position.addScaledVector(this.velocity, dt);
+            this.life -= dt;
+            this.mesh.material.opacity = (this.life / this.maxLife) * 0.8;
+            this.mesh.scale.setScalar(1 + (1 - this.life/this.maxLife)*2);
+            return this.life > 0;
+        }
+        destroy() { scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); }
+    }
+
+    // 弾丸管理
+    const bullets = [];
+    class Bullet {
+        constructor(pos, forward, speed, isPlayer) {
+            const geo = new THREE.CylinderGeometry(0.1, 0.1, 2);
+            geo.rotateX(Math.PI/2);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            this.mesh = new THREE.Mesh(geo, mat);
+            this.mesh.position.copy(pos);
+            this.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,-1), forward);
+            this.velocity = forward.clone().multiplyScalar(speed);
+            this.life = 3.0; // seconds
+            this.isPlayer = isPlayer;
+            scene.add(this.mesh);
+        }
+        update(dt) {
+            this.mesh.position.addScaledVector(this.velocity, dt);
+            this.life -= dt;
+            return this.life > 0;
+        }
+        destroy() { scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); }
+    }
+
+    // --- 航空機クラス ---
+    class Airplane {
+        constructor(isPlayer = false, color = 0x4B5320) {
+            this.isPlayer = isPlayer;
+            this.mesh = new THREE.Group();
+            this.hitboxes = {}; // ダメージ部位判定用
+
+            this.createModel(color);
+            scene.add(this.mesh);
+
+            // 物理・飛行状態
+            this.mass = 2500; // kg
+            this.velocity = new THREE.Vector3(0, 0, 0);
+            this.throttle = 0; // 0 to 1
+            this.rpm = 0;
+            this.maxThrust = 15000; // N
+            this.angularVelocity = new THREE.Vector3(0, 0, 0); // pitch, yaw, roll
+
+            // ダメージ状態 (100で正常, 0で破壊)
+            this.health = {
+                engine: 100,
+                fuselage: 100,
+                leftWing: 100,
+                rightWing: 100,
+                tail: 100
+            };
+            this.isDestroyed = false;
+
+            // 武器
+            this.lastFireTime = 0;
+            this.fireRate = 0.1; // sec
+        }
+
+        createModel(mainColor) {
+            const matBase = new THREE.MeshLambertMaterial({ color: mainColor });
+            const matDark = new THREE.MeshLambertMaterial({ color: 0x222222 });
+            const matGlass = new THREE.MeshPhongMaterial({ color: 0xaaccff, transparent: true, opacity: 0.5, shininess: 100 });
+
+            // 胴体
+            const fuseGeo = new THREE.CylinderGeometry(0.8, 1.0, 7, 16);
+            fuseGeo.rotateX(Math.PI / 2);
+            const fuselage = new THREE.Mesh(fuseGeo, matBase);
+            this.mesh.add(fuselage);
+            this.createHitbox(fuselage, 'fuselage', new THREE.Vector3(1.6, 2.0, 7));
+
+            // 機首（エンジン部）
+            const noseGeo = new THREE.CylinderGeometry(0.1, 0.8, 1.5, 16);
+            noseGeo.rotateX(Math.PI / 2);
+            const nose = new THREE.Mesh(noseGeo, matDark);
+            nose.position.z = -4.25;
+            this.mesh.add(nose);
+            this.createHitbox(nose, 'engine', new THREE.Vector3(1.6, 1.6, 1.5));
+
+            // プロペラ
+            this.propeller = new THREE.Group();
+            const bladeGeo = new THREE.BoxGeometry(3, 0.1, 0.2);
+            const blade1 = new THREE.Mesh(bladeGeo, matDark);
+            const blade2 = new THREE.Mesh(bladeGeo, matDark);
+            blade2.rotation.z = Math.PI / 2;
+            this.propeller.add(blade1);
+            this.propeller.add(blade2);
+            this.propeller.position.z = -5.1;
+            this.mesh.add(this.propeller);
+
+            // 主翼
+            const wingGeo = new THREE.BoxGeometry(10, 0.15, 1.5);
+            const leftWing = new THREE.Mesh(wingGeo, matBase);
+            leftWing.position.set(-2.5, -0.2, -1);
+            this.mesh.add(leftWing);
+            this.createHitbox(leftWing, 'leftWing', new THREE.Vector3(5, 0.5, 1.5));
+
+            const rightWing = new THREE.Mesh(wingGeo, matBase);
+            rightWing.position.set(2.5, -0.2, -1);
+            this.mesh.add(rightWing);
+            this.createHitbox(rightWing, 'rightWing', new THREE.Vector3(5, 0.5, 1.5));
+
+            // 尾翼
+            const hTailGeo = new THREE.BoxGeometry(3, 0.1, 1);
+            const hTail = new THREE.Mesh(hTailGeo, matBase);
+            hTail.position.set(0, 0.2, 3);
+            this.mesh.add(hTail);
+            
+            const vTailGeo = new THREE.BoxGeometry(0.1, 1.5, 1.2);
+            const vTail = new THREE.Mesh(vTailGeo, matBase);
+            vTail.position.set(0, 0.8, 3);
+            this.mesh.add(vTail);
+            this.createHitbox(vTail, 'tail', new THREE.Vector3(3, 2, 1.5), new THREE.Vector3(0, 0.5, 3));
+
+            // コクピット（キャノピー）
+            const canopyGeo = new THREE.BoxGeometry(0.8, 0.8, 1.5);
+            const canopy = new THREE.Mesh(canopyGeo, matGlass);
+            canopy.position.set(0, 0.8, 0);
+            this.mesh.add(canopy);
+
+            // カメラ用アンカー
+            this.camAnchor1st = new THREE.Object3D();
+            this.camAnchor1st.position.set(0, 0.7, 0.2); // コクピット内
+            this.mesh.add(this.camAnchor1st);
+
+            this.camAnchor3rd = new THREE.Object3D();
+            this.camAnchor3rd.position.set(0, 3, 12); // 後方
+            this.mesh.add(this.camAnchor3rd);
+        }
+
+        createHitbox(mesh, partName, size, offset = new THREE.Vector3()) {
+            const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
+            const mat = new THREE.MeshBasicMaterial({visible: false});
+            const hitbox = new THREE.Mesh(geo, mat);
+            hitbox.position.copy(mesh.position).add(offset);
+            hitbox.name = partName;
+            hitbox.userData.plane = this;
+            this.mesh.add(hitbox);
+            this.hitboxes[partName] = hitbox;
+        }
+
+        getForward() {
+            return new THREE.Vector3(0, 0, -1).applyQuaternion(this.mesh.quaternion);
+        }
+        getUp() {
+            return new THREE.Vector3(0, 1, 0).applyQuaternion(this.mesh.quaternion);
+        }
+        getRight() {
+            return new THREE.Vector3(1, 0, 0).applyQuaternion(this.mesh.quaternion);
+        }
+
+        applyDamage(part, amount) {
+            if (this.isDestroyed) return;
+            this.health[part] -= amount;
+            if (this.health[part] < 0) this.health[part] = 0;
+
+            if (this.isPlayer) updateDamageUI();
+
+            // 致命的なダメージ
+            if (this.health.fuselage <= 0) {
+                this.explode();
+            }
+        }
+
+        explode() {
+            this.isDestroyed = true;
+            // 爆発エフェクト
+            for(let i=0; i<30; i++) {
+                particles.push(new Particle(
+                    this.mesh.position,
+                    new THREE.Vector3((Math.random()-0.5)*50, (Math.random()-0.5)*50, (Math.random()-0.5)*50),
+                    Math.random() > 0.5 ? 0xff4400 : 0x555555,
+                    2.0 + Math.random()*2,
+                    1.0 + Math.random()*2
+                ));
+            }
+            if (this.isPlayer) {
+                isGameOver = true;
+                document.getElementById('game-over').style.display = 'block';
+            } else {
+                // 敵が死んだら少し離れた場所にリスポーン
+                setTimeout(() => {
+                    this.mesh.position.set(
+                        player.mesh.position.x + (Math.random()-0.5)*1000,
+                        player.mesh.position.y + 500,
+                        player.mesh.position.z - 1000
+                    );
+                    this.mesh.lookAt(player.mesh.position);
+                    this.velocity.set(0,0,0);
+                    this.health = { engine: 100, fuselage: 100, leftWing: 100, rightWing: 100, tail: 100 };
+                    this.isDestroyed = false;
+                }, 3000);
+            }
+        }
+
+        fire() {
+            const now = performance.now() / 1000;
+            if (now - this.lastFireTime > this.fireRate) {
+                this.lastFireTime = now;
+                const fw = this.getForward();
+                // 左右の翼から発射
+                const leftGun = this.mesh.position.clone().add(this.getRight().multiplyScalar(-2)).add(fw.clone().multiplyScalar(2));
+                const rightGun = this.mesh.position.clone().add(this.getRight().multiplyScalar(2)).add(fw.clone().multiplyScalar(2));
+                
+                bullets.push(new Bullet(leftGun, fw, 600, this.isPlayer)); // 弾速
+                bullets.push(new Bullet(rightGun, fw, 600, this.isPlayer));
+            }
+        }
+
+        updatePhysics(dt, inputs) {
+            if (this.isDestroyed) {
+                // 墜落挙動
+                this.velocity.y -= CONFIG.gravity * dt;
+                this.mesh.position.addScaledVector(this.velocity, dt);
+                this.mesh.rotation.x += dt;
+                this.mesh.rotation.z += dt;
+                if (this.mesh.position.y < 0) this.mesh.position.y = 0;
+                return;
+            }
+
+            // ダメージによる係数計算
+            const engineEfficency = this.health.engine / 100;
+            const liftLeft = this.health.leftWing / 100;
+            const liftRight = this.health.rightWing / 100;
+            const controlEffect = this.health.tail / 100;
+
+            // スロットルとエンジンRPM
+            let targetRpm = this.throttle * 3000 * engineEfficency;
+            this.rpm += (targetRpm - this.rpm) * dt * 2.0; 
+            this.propeller.rotation.z += this.rpm * dt * 0.05;
+
+            // エンジン被弾時の発煙
+            if (this.health.engine < 50 && Math.random() < 0.3) {
+                particles.push(new Particle(this.mesh.position.clone().add(this.getForward().multiplyScalar(4)), new THREE.Vector3(0,0,0), 0x333333, 1.5, 0.5));
+            }
+
+            const forward = this.getForward();
+            const up = this.getUp();
+            const right = this.getRight();
+
+            // 気流速度（ローカル）
+            const airspeed = this.velocity.dot(forward);
+            // 速度に依存する揚力・抗力・舵の効き
+            const dynamicPressure = 0.5 * CONFIG.airDensity * (airspeed * airspeed);
+
+            // 推力
+            const thrustMag = (this.rpm / 3000) * this.maxThrust;
+            const thrust = forward.clone().multiplyScalar(thrustMag);
+
+            // 抗力
+            const dragCoef = 0.02 + Math.abs(this.angularVelocity.x)*0.1; // 迎角による抗力増を簡易表現
+            const dragMag = dragCoef * dynamicPressure;
+            const drag = this.velocity.clone().normalize().multiplyScalar(-dragMag);
+
+            // 揚力 (ダメージによる左右非対称揚力)
+            const baseLiftCoef = 0.5;
+            const liftMagLeft = baseLiftCoef * dynamicPressure * liftLeft;
+            const liftMagRight = baseLiftCoef * dynamicPressure * liftRight;
+            const totalLiftMag = liftMagLeft + liftMagRight;
+            const lift = up.clone().multiplyScalar(totalLiftMag);
+
+            // 重力
+            const gravity = new THREE.Vector3(0, -this.mass * CONFIG.gravity, 0);
+
+            // 加速度・速度更新
+            const netForce = new THREE.Vector3().add(thrust).add(drag).add(lift).add(gravity);
+            const acceleration = netForce.divideScalar(this.mass);
+            this.velocity.addScaledVector(acceleration, dt);
+            
+            // --- 回転運動 (トルクとジャイロ効果を含む) ---
+            
+            // 舵の効き具合（速度依存）
+            const ctrlAuthority = Math.max(0.1, Math.min(1.0, airspeed / 50)) * controlEffect;
+
+            // プレイヤー/AIの入力
+            let pitchInput = inputs.pitch || 0;
+            let rollInput = inputs.roll || 0;
+            let yawInput = inputs.yaw || 0;
+
+            // ダメージによる勝手なロール（非対称揚力によるトルク）
+            const asymmetricLiftTorque = (liftMagRight - liftMagLeft) * 0.005;
+
+            // エンジントルク効果（プロペラ反力：スロットルを入れると機体が左にロールしようとする）
+            const engineTorque = (this.rpm / 3000) * 0.5; // rad/s^2
+
+            // ジャイロ効果（回転体による歳差運動）
+            // ピッチング -> ヨーイング, ヨーイング -> ピッチング
+            const gyroFactor = (this.rpm / 3000) * 0.2;
+            const gyroPitch = -this.angularVelocity.y * gyroFactor; // ヨーによるピッチ
+            const gyroYaw = this.angularVelocity.x * gyroFactor;  // ピッチによるヨー
+
+            // 目標角加速度
+            const pitchAcc = (pitchInput * 2.0 * ctrlAuthority) + gyroPitch - this.angularVelocity.x * 2.0;
+            const yawAcc = (yawInput * 1.0 * ctrlAuthority) + gyroYaw - this.angularVelocity.y * 2.0;
+            const rollAcc = (rollInput * 3.0 * ctrlAuthority) - engineTorque + asymmetricLiftTorque - this.angularVelocity.z * 3.0;
+
+            this.angularVelocity.x += pitchAcc * dt;
+            this.angularVelocity.y += yawAcc * dt;
+            this.angularVelocity.z += rollAcc * dt;
+
+            // クォータニオンによる回転適用（ジンバルロック回避）
+            const q = new THREE.Quaternion();
+            // ローカル軸に対する回転を適用
+            q.setFromAxisAngle(right, this.angularVelocity.x * dt);
+            this.mesh.quaternion.premultiply(q);
+            q.setFromAxisAngle(up, this.angularVelocity.y * dt);
+            this.mesh.quaternion.premultiply(q);
+            q.setFromAxisAngle(forward, this.angularVelocity.z * dt);
+            this.mesh.quaternion.premultiply(q);
+
+            // 位置更新
+            this.mesh.position.addScaledVector(this.velocity, dt);
+
+            // 地面衝突判定
+            if (this.mesh.position.y < 2) {
+                this.mesh.position.y = 2;
+                if (this.velocity.y < -10) {
+                    this.applyDamage('fuselage', 100); // 激突
+                } else {
+                    this.velocity.y = 0;
+                    this.velocity.multiplyScalar(0.95); // 摩擦
+                }
+            }
+        }
+    }
+
+    // --- インスタンス生成 ---
+    const player = new Airplane(true, 0x4B5320); // オリーブドラブ
+    player.mesh.position.set(0, 1000, 0);
+    player.velocity.set(0, 0, -100); // 初期速度 (約360km/h)
+    player.throttle = 0.8;
+
+    const enemy = new Airplane(false, 0x555555); // グレー
+    enemy.mesh.position.set(0, 1000, -500);
+    enemy.mesh.lookAt(player.mesh.position);
+    enemy.velocity.set(0, 0, -80);
+    enemy.throttle = 0.7;
+
+    // --- UI更新ロジック ---
+    function updateUI() {
+        const speedKmH = player.velocity.length() * 3.6;
+        document.getElementById('ui-speed').innerText = Math.round(speedKmH);
+        document.getElementById('ui-alt').innerText = Math.round(player.mesh.position.y);
+        document.getElementById('ui-throttle').innerText = Math.round(player.throttle * 100);
+        
+        let heading = Math.round(Math.atan2(-player.getForward().x, -player.getForward().z) * 180 / Math.PI);
+        if(heading < 0) heading += 360;
+        document.getElementById('ui-heading').innerText = heading;
+
+        if (cameraMode === 'first') {
+            // 計器アニメーション
+            document.getElementById('inst-speed-val').innerText = Math.round(speedKmH);
+            document.getElementById('needle-speed').style.transform = `translateX(-50%) rotate(${Math.min(speedKmH / 500 * 270 - 135, 135)}deg)`;
+            
+            document.getElementById('inst-alt-val').innerText = Math.round(player.mesh.position.y);
+            // 高度は1000mで1周
+            document.getElementById('needle-alt').style.transform = `translateX(-50%) rotate(${(player.mesh.position.y % 1000) / 1000 * 360}deg)`;
+
+            // 方位磁針
+            document.getElementById('needle-compass').style.transform = `translateX(-50%) rotate(${heading}deg)`;
+
+            // 姿勢儀 (人工水平儀)
+            const euler = new THREE.Euler().setFromQuaternion(player.mesh.quaternion, 'ZXY');
+            const pitchDeg = euler.x * 180 / Math.PI;
+            const rollDeg = euler.z * 180 / Math.PI;
+            const horizonBg = document.getElementById('horizon-bg');
+            const horizonPitch = document.getElementById('horizon-pitch');
+            
+            horizonBg.style.transform = `rotate(${-rollDeg}deg)`;
+            // ピッチによる上下移動 (-90 ~ 90 度 をマップ)
+            const pitchOffset = (pitchDeg / 90) * 50; 
+            horizonPitch.style.transform = `translateY(${pitchOffset}%)`;
+        }
+    }
+
+    function updateDamageUI() {
+        const parts = ['engine', 'fuselage', 'leftWing', 'rightWing', 'tail'];
+        parts.forEach(part => {
+            const hp = player.health[part];
+            const el = document.getElementById(`dmg-${part}`);
+            el.style.width = `${hp}%`;
+            el.className = 'damage-fill';
+            if (hp < 30) el.classList.add('critical');
+            else if (hp < 70) el.classList.add('warning');
+        });
+    }
+
+    function toggleCamera() {
+        if (cameraMode === 'third') {
+            cameraMode = 'first';
+            document.getElementById('crosshair').style.display = 'block';
+            document.getElementById('cockpit-instruments').style.display = 'flex';
+        } else {
+            cameraMode = 'third';
+            document.getElementById('crosshair').style.display = 'none';
+            document.getElementById('cockpit-instruments').style.display = 'none';
+        }
+    }
+
+    // --- メインループ ---
+    const clock = new THREE.Clock();
+
+    // 衝突判定用 Raycaster
+    const raycaster = new THREE.Raycaster();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.1); // 最大dt制限
+
+        if (!isGameOver) {
+            // --- プレイヤー入力処理 ---
+            const pInputs = { pitch: 0, yaw: 0, roll: 0 };
+            if (keys.w) pInputs.pitch = -1; // ノーズダウン
+            if (keys.s) pInputs.pitch = 1;  // ノーズアップ
+            if (keys.a) pInputs.roll = -1;  // 左ロール
+            if (keys.d) pInputs.roll = 1;   // 右ロール
+            if (keys.q) pInputs.yaw = 1;    // 左ヨー
+            if (keys.e) pInputs.yaw = -1;   // 右ヨー
+
+            if (keys.shift) player.throttle = Math.min(1.0, player.throttle + 0.5 * dt);
+            if (keys.ctrl) player.throttle = Math.max(0.0, player.throttle - 0.5 * dt);
+
+            if (keys.space) player.fire();
+
+            player.updatePhysics(dt, pInputs);
+
+            // --- 敵AI処理 (簡易) ---
+            const eInputs = { pitch: 0, yaw: 0, roll: 0 };
+            if (!enemy.isDestroyed) {
+                // プレイヤーの方向へ向くようにピッチ/ロールを入れる
+                const toPlayer = player.mesh.position.clone().sub(enemy.mesh.position).normalize();
+                const eForward = enemy.getForward();
+                const eRight = enemy.getRight();
+                const eUp = enemy.getUp();
+                
+                const dotUp = toPlayer.dot(eUp);
+                const dotRight = toPlayer.dot(eRight);
+                
+                if (dotUp > 0.1) eInputs.pitch = 1;
+                else if (dotUp < -0.1) eInputs.pitch = -1;
+                
+                if (dotRight > 0.1) eInputs.roll = 1;
+                else if (dotRight < -0.1) eInputs.roll = -1;
+
+                enemy.throttle = 0.8;
+
+                // 射程内で前方にいれば撃つ
+                if (enemy.mesh.position.distanceTo(player.mesh.position) < 800 && toPlayer.dot(eForward) > 0.95) {
+                    enemy.fire();
+                }
+            }
+            enemy.updatePhysics(dt, eInputs);
+        }
+
+        // --- 弾丸更新＆衝突判定 ---
+        const hitboxesList = [];
+        if(!player.isDestroyed) Object.values(player.hitboxes).forEach(b => hitboxesList.push(b));
+        if(!enemy.isDestroyed) Object.values(enemy.hitboxes).forEach(b => hitboxesList.push(b));
+
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            const prevPos = b.mesh.position.clone();
+            
+            if (!b.update(dt)) {
+                b.destroy();
+                bullets.splice(i, 1);
+                continue;
+            }
+
+            // レイキャストで弾道上の衝突をチェック
+            const currentPos = b.mesh.position.clone();
+            const dir = currentPos.clone().sub(prevPos);
+            const dist = dir.length();
+            
+            if (dist > 0) {
+                raycaster.set(prevPos, dir.normalize());
+                raycaster.far = dist;
+                const intersects = raycaster.intersectObjects(hitboxesList);
+                
+                if (intersects.length > 0) {
+                    const hit = intersects[0];
+                    const targetPlane = hit.object.userData.plane;
+                    
+                    // 自分自身を撃たない
+                    if (targetPlane.isPlayer !== b.isPlayer) {
+                        const partName = hit.object.name;
+                        // ダメージ適用
+                        targetPlane.applyDamage(partName, 10 + Math.random() * 10);
+                        
+                        // ヒットエフェクト
+                        particles.push(new Particle(hit.point, new THREE.Vector3(), 0xffaa00, 0.5, 0.5));
+                        
+                        b.destroy();
+                        bullets.splice(i, 1);
+                    }
+                }
+            }
+        }
+
+        // --- パーティクル更新 ---
+        for (let i = particles.length - 1; i >= 0; i--) {
+            if (!particles[i].update(dt)) {
+                particles[i].destroy();
+                particles.splice(i, 1);
+            }
+        }
+
+        // --- カメラ追従 ---
+        if (!isGameOver) {
+            if (cameraMode === 'third') {
+                const targetPos = player.camAnchor3rd.getWorldPosition(new THREE.Vector3());
+                camera.position.lerp(targetPos, 5.0 * dt);
+                
+                // カメラの向きも機体に追従させるが少し遅らせる（滑らかさ）
+                const targetRot = player.mesh.quaternion;
+                camera.quaternion.slerp(targetRot, 3.0 * dt);
+            } else { // first person
+                camera.position.copy(player.camAnchor1st.getWorldPosition(new THREE.Vector3()));
+                camera.quaternion.copy(player.mesh.quaternion);
+            }
+        }
+
+        // UI更新
+        updateUI();
+
+        renderer.render(scene, camera);
+    }
+
+    // リサイズ対応
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // 初期化と起動
+    updateDamageUI();
+    animate();
+};
+</script>
+</body>
+</html>
