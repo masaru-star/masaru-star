@@ -393,6 +393,8 @@ function initGame() {
             this.hitboxes = {};
             this.isGrounded = true;
             this.wheelRadius = 1.0;
+            this.aiPattern = null;
+            this.wasHitByPlayer = false;
 
             // 機体性能の設定
             this.mass = 2500;
@@ -504,19 +506,20 @@ function initGame() {
         getUp() { return new THREE.Vector3(0, 1, 0).applyQuaternion(this.mesh.quaternion); }
         getRight() { return new THREE.Vector3(1, 0, 0).applyQuaternion(this.mesh.quaternion); }
 
-        applyDamage(part, amount) {
+        applyDamage(part, amount, sourceIsPlayer = false) {
             if (this.isDestroyed) return;
+            if (sourceIsPlayer && !this.isPlayer) this.wasHitByPlayer = true;
             this.health[part] -= amount;
             if (this.health[part] < 0) this.health[part] = 0;
 
             if (this.isPlayer) updateDamageUI();
 
             if (this.health.fuselage <= 0 || this.health.engine <= 0) {
-                this.explode();
+                this.explode(sourceIsPlayer && this.wasHitByPlayer);
             }
         }
 
-        explode() {
+        explode(countAsKill = false) {
             if (this.isDestroyed) return;
             this.isDestroyed = true;
             for(let i=0; i<40; i++) {
@@ -532,8 +535,10 @@ function initGame() {
             if (this.isPlayer) {
                 showGameOver("撃墜されました", "機体が大破しました。");
             } else {
-                gameState.kills++;
-                document.getElementById('ui-kills').innerText = gameState.kills;
+                if (countAsKill) {
+                    gameState.kills++;
+                    document.getElementById('ui-kills').innerText = gameState.kills;
+                }
                 // 敵機モデルを少し下にずらして見えなくする (削除するとRaycasterエラーの可能性があるため簡易的処置)
                 setTimeout(() => {
                     this.mesh.position.y = -1000;
@@ -604,7 +609,7 @@ function initGame() {
 
             // 揚力 (地面効果を追加して離陸しやすくする)
             let currentLiftCoef = this.liftCoef;
-            if (this.mesh.position.y < 10) currentLiftCoef *= 1.3;
+            if (this.mesh.position.y < 10) currentLiftCoef *= this.isPlayer ? 1.6 : 1.3;
 
             const liftMagLeft = currentLiftCoef * dynamicPressure * liftLeft;
             const liftMagRight = currentLiftCoef * dynamicPressure * liftRight;
@@ -646,14 +651,14 @@ function initGame() {
                 
                 if (currentEuler.x > 0) {
                     currentEuler.x *= 0.8; // 機首下げは水平に戻す
-                } else if (currentEuler.x < -0.25) {
-                    currentEuler.x = -0.25; // 尻餅防止 (約14度)
+                } else if (currentEuler.x < -0.35) {
+                    currentEuler.x = -0.35; // 尻餅防止しつつ機首上げ余裕を増やす (約20度)
                     if (this.angularVelocity.x < 0) this.angularVelocity.x = 0;
                 }
                 this.mesh.quaternion.setFromEuler(currentEuler);
 
                 // ブレーキと転がり抵抗
-                let friction = 0.99; 
+                let friction = this.isPlayer ? 0.995 : 0.99;
                 if (inputs.brake) friction = 0.95; // ブレーキ
                 this.velocity.x *= friction;
                 this.velocity.z *= friction;
@@ -707,10 +712,20 @@ function initGame() {
     }
 
     // プレイヤー初期化 (滑走路上)
-    const player = new Airplane(true, playerConfig.plane, playerConfig.weapon, new THREE.Vector3(0, 1.2, 1000));
+    const player = new Airplane(true, playerConfig.plane, playerConfig.weapon, new THREE.Vector3(0, 1.2, 300));
+    player.throttle = 0.25;
     
     // 敵の配列
     const enemies = [];
+    const enemyAiPatterns = [
+        { id: 'aggressive', preferredAltitude: 140, fireRange: 700, throttle: 0.95, rollScale: 1.0, climbBias: 1.0 },
+        { id: 'boomzoom', preferredAltitude: 380, fireRange: 800, throttle: 1.0, rollScale: 0.75, climbBias: 1.35 },
+        { id: 'defensive', preferredAltitude: 220, fireRange: 550, throttle: 0.85, rollScale: 1.35, climbBias: 0.8 }
+    ];
+
+    function pickEnemyAiPattern() {
+        return enemyAiPatterns[Math.floor(Math.random() * enemyAiPatterns.length)];
+    }
 
     function spawnEnemy() {
         if(gameState.isGameOver || !gameState.isRunning) return;
@@ -721,10 +736,62 @@ function initGame() {
         );
         const eType = Math.random() > 0.5 ? 'balanced' : 'turn';
         const enemy = new Airplane(false, eType, 'mg', spawnPos);
+        enemy.aiPattern = pickEnemyAiPattern();
         enemy.velocity.set(0, 0, -100);
-        enemy.throttle = 0.8;
+        enemy.throttle = enemy.aiPattern.throttle;
         enemy.mesh.lookAt(player.mesh.position);
         enemies.push(enemy);
+    }
+
+    function updateEnemyAI(enemy, dt) {
+        const pattern = enemy.aiPattern || enemyAiPatterns[0];
+        const eInputs = { pitch: 0, yaw: 0, roll: 0, brake: false };
+        const toPlayerRaw = player.mesh.position.clone().sub(enemy.mesh.position);
+        const distanceToPlayer = toPlayerRaw.length();
+        const toPlayer = toPlayerRaw.normalize();
+        const eForward = enemy.getForward();
+        const eRight = enemy.getRight();
+        const eUp = enemy.getUp();
+
+        const dotUp = toPlayer.dot(eUp);
+        const dotRight = toPlayer.dot(eRight);
+        const dotForward = toPlayer.dot(eForward);
+        const altitudeDiff = (player.mesh.position.y + pattern.preferredAltitude) - enemy.mesh.position.y;
+
+        if (altitudeDiff > 120) eInputs.pitch = 1 * pattern.climbBias;
+        else if (altitudeDiff < -120) eInputs.pitch = -0.6;
+        else if (dotUp > 0.08) eInputs.pitch = 0.8;
+        else if (dotUp < -0.08) eInputs.pitch = -0.8;
+
+        if (dotRight > 0.1) eInputs.roll = 1 * pattern.rollScale;
+        else if (dotRight < -0.1) eInputs.roll = -1 * pattern.rollScale;
+
+        if (pattern.id === 'boomzoom') {
+            if (distanceToPlayer > 1200) {
+                eInputs.pitch = Math.max(eInputs.pitch, 1.0);
+                eInputs.roll *= 0.6;
+            } else if (distanceToPlayer < 500 && dotForward > 0.85) {
+                eInputs.pitch = -0.9;
+                eInputs.roll *= 1.2;
+            }
+        } else if (pattern.id === 'defensive') {
+            if (distanceToPlayer < 650) {
+                eInputs.roll = dotRight >= 0 ? 1.0 : -1.0;
+                eInputs.pitch = 0.5;
+            }
+        }
+
+        // 地面衝突回避
+        if (enemy.mesh.position.y < 320 && enemy.velocity.y < 0) {
+            eInputs.pitch = 1;
+            eInputs.roll = 0;
+        }
+
+        enemy.throttle = pattern.throttle;
+        if (distanceToPlayer < pattern.fireRange && dotForward > 0.93) {
+            enemy.fire();
+        }
+        return eInputs;
     }
 
     function showGameOver(title, desc) {
@@ -846,37 +913,7 @@ function initGame() {
 
             // 敵処理
             enemies.forEach(enemy => {
-                const eInputs = { pitch: 0, yaw: 0, roll: 0, brake: false };
-                if (!enemy.isDestroyed) {
-                    const toPlayer = player.mesh.position.clone().sub(enemy.mesh.position).normalize();
-                    const eForward = enemy.getForward();
-                    const eRight = enemy.getRight();
-                    const eUp = enemy.getUp();
-                    
-                    const dotUp = toPlayer.dot(eUp);
-                    const dotRight = toPlayer.dot(eRight);
-                    
-                    // プレイヤーより高い高度を取ろうとする
-                    if (enemy.mesh.position.y < player.mesh.position.y + 100) eInputs.pitch = 1; 
-                    else {
-                        if (dotUp > 0.1) eInputs.pitch = 1;
-                        else if (dotUp < -0.1) eInputs.pitch = -1;
-                    }
-                    
-                    if (dotRight > 0.1) eInputs.roll = 1;
-                    else if (dotRight < -0.1) eInputs.roll = -1;
-
-                    // 地面衝突回避
-                    if(enemy.mesh.position.y < 300 && enemy.velocity.y < 0) {
-                         eInputs.pitch = 1; eInputs.roll = 0;
-                    }
-
-                    enemy.throttle = 0.9;
-
-                    if (enemy.mesh.position.distanceTo(player.mesh.position) < 600 && toPlayer.dot(eForward) > 0.95) {
-                        enemy.fire();
-                    }
-                }
+                const eInputs = enemy.isDestroyed ? { pitch: 0, yaw: 0, roll: 0, brake: false } : updateEnemyAI(enemy, dt);
                 enemy.updatePhysics(dt, eInputs);
             });
         }
@@ -910,7 +947,7 @@ function initGame() {
                     const targetPlane = hit.object.userData.plane;
                     
                     if (targetPlane.isPlayer !== b.isPlayer) {
-                        targetPlane.applyDamage(hit.object.name, b.damage);
+                        targetPlane.applyDamage(hit.object.name, b.damage, b.isPlayer);
                         particles.push(new Particle(hit.point, new THREE.Vector3(), 0xffaa00, 0.5, 0.5));
                         b.destroy(); bullets.splice(i, 1);
                     }
