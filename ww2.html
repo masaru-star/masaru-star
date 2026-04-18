@@ -252,8 +252,9 @@ function initGame() {
         cameraMode: 'third',
         startTime: performance.now(),
         kills: 0,
-        enemySpawnSchedule: [20, 35, 50], // 何秒後に敵をスポーンさせるか
-        enemiesSpawned: 0
+        lastSpawnTime: 0,
+        firstSpawnDelay: 15, // 開始から15秒後に最初の敵
+        spawnInterval: 20    // 以降20秒間隔で補充
     };
     
     const keys = { w: false, a: false, s: false, d: false, q: false, e: false, shift: false, ctrl: false, space: false, b: false };
@@ -601,9 +602,12 @@ function initGame() {
             const dragMag = (this.dragCoefBase + Math.abs(this.angularVelocity.x)*0.1) * dynamicPressure;
             const drag = this.velocity.clone().normalize().multiplyScalar(-dragMag);
 
-            // 揚力
-            const liftMagLeft = this.liftCoef * dynamicPressure * liftLeft;
-            const liftMagRight = this.liftCoef * dynamicPressure * liftRight;
+            // 揚力 (地面効果を追加して離陸しやすくする)
+            let currentLiftCoef = this.liftCoef;
+            if (this.mesh.position.y < 10) currentLiftCoef *= 1.3;
+
+            const liftMagLeft = currentLiftCoef * dynamicPressure * liftLeft;
+            const liftMagRight = currentLiftCoef * dynamicPressure * liftRight;
             const totalLiftMag = liftMagLeft + liftMagRight;
             const lift = up.clone().multiplyScalar(totalLiftMag);
 
@@ -635,12 +639,17 @@ function initGame() {
                 gravityForce.y = 0;
                 if(this.velocity.y < 0) this.velocity.y = 0;
 
-                // ロールとピッチを水平に近づける (転倒防止)
-                this.angularVelocity.x *= 0.8;
+                // ロールとピッチの補正 (離陸しやすくするためピッチアップを許容)
                 this.angularVelocity.z *= 0.8;
                 const currentEuler = new THREE.Euler().setFromQuaternion(this.mesh.quaternion, 'YXZ');
-                currentEuler.x *= 0.95;
-                currentEuler.z *= 0.95;
+                currentEuler.z *= 0.95; // ロールは水平に
+                
+                if (currentEuler.x > 0) {
+                    currentEuler.x *= 0.8; // 機首下げは水平に戻す
+                } else if (currentEuler.x < -0.25) {
+                    currentEuler.x = -0.25; // 尻餅防止 (約14度)
+                    if (this.angularVelocity.x < 0) this.angularVelocity.x = 0;
+                }
                 this.mesh.quaternion.setFromEuler(currentEuler);
 
                 // ブレーキと転がり抵抗
@@ -716,7 +725,6 @@ function initGame() {
         enemy.throttle = 0.8;
         enemy.mesh.lookAt(player.mesh.position);
         enemies.push(enemy);
-        gameState.enemiesSpawned++;
     }
 
     function showGameOver(title, desc) {
@@ -751,23 +759,26 @@ function initGame() {
             const s = String(elapsed % 60).padStart(2, '0');
             document.getElementById('ui-time').innerText = `${m}:${s}`;
 
-            if (gameState.enemiesSpawned < gameState.enemySpawnSchedule.length) {
-                const nextSpawn = gameState.enemySpawnSchedule[gameState.enemiesSpawned];
-                const remain = nextSpawn - elapsed;
+            const aliveEnemies = enemies.filter(e => !e.isDestroyed).length;
+            
+            let nextSpawnTime = gameState.firstSpawnDelay;
+            if (enemies.length > 0) {
+                 nextSpawnTime = gameState.lastSpawnTime + gameState.spawnInterval;
+            }
+
+            if (aliveEnemies < 3) {
+                const remain = nextSpawnTime - elapsed;
                 if (remain > 0) {
                     document.getElementById('ui-enemy-time').innerText = remain + " 秒";
+                    document.getElementById('ui-enemy-time').style.color = "#ff5555";
                 } else {
-                    document.getElementById('ui-enemy-time').innerText = "交戦中！";
+                    document.getElementById('ui-enemy-time').innerText = "接近中...";
                     spawnEnemy();
+                    gameState.lastSpawnTime = elapsed;
                 }
-            } else if (enemies.every(e => e.isDestroyed)) {
-                document.getElementById('ui-enemy-time').innerText = "敵機全滅！帰投せよ";
-                document.getElementById('ui-enemy-time').style.color = "#0f0";
-                
-                // 着陸判定
-                if (player.isGrounded && speedKmH < 5) {
-                    showGameOver("ミッション達成", "無事帰還しました。お見事です。");
-                }
+            } else {
+                document.getElementById('ui-enemy-time').innerText = "交戦中！(最大数)";
+                document.getElementById('ui-enemy-time').style.color = "#ff5555";
             }
         }
 
