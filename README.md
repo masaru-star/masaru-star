@@ -7,16 +7,17 @@ I'm a Japanese student who loves programming and learning new technologies.<br>
 
 ---
 ## 🤔 Just a thought to myself...
+### July 25
+I'm building a tool to organize information about my own personality—things like my recent thoughts and special skills—but it's proving difficult.
+
+Still, it's fun to look at.
+
 ### July 18
 As for my activities, I make it a rule to take Sundays and Mondays off.
 
 ### July 1
 The lifespan of a technology is finite, yet it will likely continue to live on in altered forms.<br>
 It is by no means a waste of effort.
-
-### June 23
-Things are getting busy.<br>
-If programming were to become a special skill rather than just a hobby, what would I have done...? (I'm troubled)
 
 > Only the most recent 3 days are posted.
 ## 🚀 My current project
@@ -41,6 +42,6 @@ If programming were to become a special skill rather than just a hobby, what wou
 
 > **Conversational:** `English`
 
-> **Basic/Learning:** `Русский` `🔥Deutsch` `한국어` `简体中文` `🔥български` `Latviešu` `عربي`
+> **Basic/Learning:** `Русский` `Deutsch` `🔥한국어` `简体中文` `български` `Latviešu` `عربي`
 
 ---
