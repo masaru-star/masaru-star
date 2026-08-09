@@ -3,10 +3,13 @@ I'm a Japanese student who loves programming and learning new technologies.<br>
 正直、英語はあまり得意ではないです…
 
 ## status
-<img alt="Busy" title="Busy" src="dogeza/up.jfif" height="128">
+<img alt="Busy" title="Busy" src="dogeza/out.jfif" height="128">
 
 ---
 ## 🤔 Just a thought to myself...
+### August 9
+Wait, what?! Did I leave GitHub unattended for nearly a week? I am so sorry!!
+
 ### July 25
 I'm building a tool to organize information about my own personality—things like my recent thoughts and special skills—but it's proving difficult.
 
@@ -14,10 +17,6 @@ Still, it's fun to look at.
 
 ### July 18
 As for my activities, I make it a rule to take Sundays and Mondays off.
-
-### July 1
-The lifespan of a technology is finite, yet it will likely continue to live on in altered forms.<br>
-It is by no means a waste of effort.
 
 > Only the most recent 3 days are posted.
 ## 🚀 My current project
