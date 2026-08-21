@@ -7,6 +7,9 @@ I'm a Japanese student who loves programming and learning new technologies.<br>
 
 ---
 ## 🤔 Just a thought to myself...
+### August 21
+I want to host a Bitburner tournament. I’ve published a draft of the rules on [GitHub Gist](https://gist.github.com/masaru-star/083ec55889e251004c97201f2c0e2068), so please take a look if you have some free time.
+
 ### August 9
 Wait, what?! Did I leave GitHub unattended for nearly a week? I am so sorry!!
 
@@ -14,9 +17,6 @@ Wait, what?! Did I leave GitHub unattended for nearly a week? I am so sorry!!
 I'm building a tool to organize information about my own personality—things like my recent thoughts and special skills—but it's proving difficult.
 
 Still, it's fun to look at.
-
-### July 18
-As for my activities, I make it a rule to take Sundays and Mondays off.
 
 > Only the most recent 3 days are posted.
 ## 🚀 My current project
