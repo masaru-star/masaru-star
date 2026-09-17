@@ -59,3 +59,11 @@ I want to host a Bitburner tournament. I’ve published a draft of the rules on 
 </details>
 
 ---
+
+## Activity
+<p align="center">
+  <img 
+    src="https://streak-stats.demolab.com?user=masaru-star&theme=default&hide_border=true&ring=7C3AED&fire=7C3AED&currStreakLabel=7C3AED" 
+    height="130"
+  />
+</p>
