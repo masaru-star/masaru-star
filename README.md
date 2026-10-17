@@ -4,14 +4,14 @@ I'm a Japanese student who loves programming and learning new technologies.<br>
 
 ---
 ## 🤔 Just a thought to myself...
+### October 17
+So, I’ve finally joined the ranks of those involved in joint development… (a mix of feelings)
+
 ### September 17
 In the end, I didn't have time to tidy up the `README.md`.
 
 ### August 25
 I’ve tidied up a private repository where I keep a hodgepodge of code. I’m also planning to spruce up this profile README in the near future.
-
-### August 21
-I want to host a Bitburner tournament. I’ve published a draft of the rules on [GitHub Gist](https://gist.github.com/masaru-star/083ec55889e251004c97201f2c0e2068), so please take a look if you have some free time.
 
 > Only the most recent 3 days are posted.
 ## 🚀 My current project
